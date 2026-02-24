@@ -30,21 +30,29 @@ function styleSuffix(style: ImageStyle): string {
 
 // ── Download the image from a temporary URL and save it permanently ───────────
 async function downloadAndPersist(tempUrl: string): Promise<string> {
+  const res = await fetch(tempUrl);
+  if (!res.ok) throw new Error(`Failed to download image: ${res.status}`);
+  const contentType = res.headers.get('content-type') ?? 'image/jpeg';
+  const ext = contentType.includes('png') ? 'png' : 'jpg';
+  const buffer = Buffer.from(await res.arrayBuffer());
+
+  // On Vercel: upload to Vercel Blob (set BLOB_READ_WRITE_TOKEN in project env vars)
+  if (process.env.BLOB_READ_WRITE_TOKEN) {
+    const { put } = await import('@vercel/blob');
+    const blob = await put(`images/${randomUUID()}.${ext}`, buffer, {
+      access: 'public',
+      contentType,
+    });
+    return blob.url;
+  }
+
+  // Local development: save to filesystem
   if (!fs.existsSync(UPLOADS_DIR)) {
     fs.mkdirSync(UPLOADS_DIR, { recursive: true });
   }
-
-  const res = await fetch(tempUrl);
-  if (!res.ok) throw new Error(`Failed to download image: ${res.status}`);
-
-  const contentType = res.headers.get('content-type') ?? 'image/jpeg';
-  const ext = contentType.includes('png') ? 'png' : 'jpg';
   const filename = `${randomUUID()}.${ext}`;
   const filepath = path.join(UPLOADS_DIR, filename);
-
-  const buffer = Buffer.from(await res.arrayBuffer());
   fs.writeFileSync(filepath, buffer);
-
   const baseUrl = process.env.SERVER_BASE_URL ?? `http://localhost:${process.env.PORT ?? 3000}`;
   return `${baseUrl}/uploads/${filename}`;
 }
