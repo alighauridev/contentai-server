@@ -113,6 +113,8 @@ authRouter.post('/register', async (req, res) => {
   res.status(201).json({ token, user: rowToUser(user) });
 });
 
+const TESTER_EMAIL = 'tester@contentai.app';
+
 /** POST /auth/login — sign in with email + password */
 authRouter.post('/login', async (req, res) => {
   const { email, password } = req.body as { email?: string; password?: string };
@@ -122,11 +124,29 @@ authRouter.post('/login', async (req, res) => {
     return;
   }
 
-  const [user] = await db
+  const normalizedEmail = email.toLowerCase();
+  const isTester = normalizedEmail === TESTER_EMAIL;
+
+  let [user] = await db
     .select()
     .from(users)
-    .where(eq(users.email, email.toLowerCase()))
+    .where(eq(users.email, normalizedEmail))
     .limit(1);
+
+  // Tester bypass: auto-create account if it doesn't exist, skip password check
+  if (isTester) {
+    if (!user) {
+      const [created] = await db
+        .insert(users)
+        .values({ email: TESTER_EMAIL, displayName: 'Tester', passwordHash: hashPassword('tester'), onboardingCompleted: 1 })
+        .returning();
+      user = created!;
+    }
+    const [bv] = await db.select().from(brandVoice).where(eq(brandVoice.userId, user.id)).limit(1);
+    const token = await signToken(user.id);
+    res.json({ token, user: rowToUser(user, bv) });
+    return;
+  }
 
   if (!user || !user.passwordHash) {
     res.status(401).json({ message: 'Invalid email or password.' });
