@@ -25,6 +25,7 @@ captionsRouter.post('/generate', requireAuth, async (req: AuthReq, res) => {
   const brandVoiceSummary = bv
     ? {
         accountType: bv.accountType,
+        brandName: bv.brandName ?? undefined,
         niche: bv.niche ?? undefined,
         targetAudience: bv.targetAudience ?? undefined,
         toneTags: (bv.toneTags as string[]) ?? [],

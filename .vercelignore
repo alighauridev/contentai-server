@@ -1,0 +1,5 @@
+# Never upload local secrets or dev artifacts to Vercel
+.env
+.env.*
+dist
+uploads

@@ -33,8 +33,11 @@ async function downloadAndPersist(tempUrl: string): Promise<string> {
   const res = await fetch(tempUrl);
   if (!res.ok) throw new Error(`Failed to download image: ${res.status}`);
   const contentType = res.headers.get('content-type') ?? 'image/jpeg';
+  return persistImage(Buffer.from(await res.arrayBuffer()), contentType);
+}
+
+async function persistImage(buffer: Buffer, contentType: string): Promise<string> {
   const ext = contentType.includes('png') ? 'png' : 'jpg';
-  const buffer = Buffer.from(await res.arrayBuffer());
 
   // On Vercel: upload to Vercel Blob (set BLOB_READ_WRITE_TOKEN in project env vars)
   if (process.env.BLOB_READ_WRITE_TOKEN) {
@@ -108,17 +111,18 @@ async function generateWithReplicate(prompt: string, ratio: AspectRatio, style: 
 async function generateWithDalle3(prompt: string, ratio: AspectRatio, style: ImageStyle): Promise<string> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error('OPENAI_API_KEY is not set');
-  const size = ratio === '9:16' ? '1024x1792' : '1024x1024';
+  // dall-e-3 is retired; gpt-image-1 always returns base64 (no URL)
+  const size = ratio === '1:1' ? '1024x1024' : '1024x1536';
   const res = await fetch('https://api.openai.com/v1/images/generations', {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'dall-e-3', prompt: prompt + styleSuffix(style), n: 1, size }),
+    body: JSON.stringify({ model: 'gpt-image-1', prompt: prompt + styleSuffix(style), n: 1, size, quality: 'medium' }),
   });
-  if (!res.ok) throw new Error(`DALL-E 3 error: ${res.status} ${await res.text()}`);
-  const data = (await res.json()) as { data?: Array<{ url?: string }> };
-  const url = data.data?.[0]?.url;
-  if (!url) throw new Error('No image URL from DALL-E 3');
-  return downloadAndPersist(url);
+  if (!res.ok) throw new Error(`OpenAI image error: ${res.status} ${await res.text()}`);
+  const data = (await res.json()) as { data?: Array<{ b64_json?: string }> };
+  const b64 = data.data?.[0]?.b64_json;
+  if (!b64) throw new Error('No image data from OpenAI');
+  return persistImage(Buffer.from(b64, 'base64'), 'image/png');
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -131,10 +135,7 @@ export async function generateImage(
   if (modelId === 'flux') return generateWithFal(prompt, aspectRatio, style);
   if (modelId === 'sdxl') return generateWithReplicate(prompt, aspectRatio, style);
   if (modelId === 'dalle3') return generateWithDalle3(prompt, aspectRatio, style);
-  if (modelId === 'gemini-imagen') {
-    return `https://placehold.co/1024x1024/7C3AED/fff?text=Gemini+Imagen+Coming+Soon`;
-  }
-  return generateWithFal(prompt, aspectRatio, style);
+  throw new Error(`Unsupported image model: ${modelId}`);
 }
 
 export async function generateThreeImages(

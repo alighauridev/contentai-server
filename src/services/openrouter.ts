@@ -10,6 +10,7 @@ const PLATFORM_RULES: Record<Platform, string> = {
 
 interface BrandVoiceSummary {
   accountType?: string;
+  brandName?: string;
   niche?: string;
   targetAudience?: string;
   toneTags?: string[];
@@ -33,11 +34,14 @@ export function buildCaptionPrompt(
     brandVoice?.niche || brandVoice?.targetAudience
       ? `Niche: ${brandVoice.niche ?? 'general'}. Target audience: ${brandVoice.targetAudience ?? 'general'}. `
       : '';
+  const who = brandVoice?.brandName
+    ? `Writing for: ${brandVoice.brandName}${brandVoice.accountType ? ` (${brandVoice.accountType})` : ''}. `
+    : '';
   return `You are a social media copywriter. Generate exactly 3 distinct caption variations for the following.
 
 Platform: ${rules}
 
-${tone}${context}
+${who}${tone}${context}
 
 Topic/context: ${topic}
 
@@ -151,8 +155,9 @@ export async function generateCaptions(
       throw new Error(`Unknown model: ${modelId}`);
   }
 
+  // Split only on list markers at the start of a line, so "since 2024. Join us" stays intact
   const variations = content
-    .split(/\n*\s*\d+\.\s+/)
+    .split(/(?:^|\n)\s*\d+[.)]\s+/)
     .map((s) => s.trim())
     .filter(Boolean);
   if (variations.length < 3) {
